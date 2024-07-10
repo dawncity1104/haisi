@@ -1,0 +1,258 @@
+import pyb, sensor, image, time
+from pyb import LED
+
+# 初始化 LED
+red_led = LED(1)
+green_led = LED(2)
+blue_led = LED(3)
+
+# 红色阈值
+red_threshold = ((0, 100, -2, 127, 18, 127))
+# 定义蓝色阈值 (根据实际情况调整)
+blue_threshold = ((0, 100, -16, 127, -128, -14))
+
+# 初始化
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)   # 选择RGB模式
+sensor.set_framesize(sensor.QVGA)    # 320x240选择分辨率（分辨率越高帧率可能越低）
+sensor.set_auto_gain(False)  # 关闭自动增益，以防止图像冲洗
+sensor.skip_frames(time = 1000)
+roi_left = (0, 0, sensor.width() // 2, sensor.height())     # 左侧区域
+line_roi1 = (25,5,270,140)   # 上方
+
+# 0正常巡线，1十字路口，2终点线
+flag = 4
+cros_flag = 4
+xx1 = 0
+xx2 = 0
+place = "none"
+
+# 巡线函数
+def run():
+    # 0正常巡线，1十字路口，2终点线
+    global flag
+    global xx1
+    global xx2
+    #blobs_low = img.find_blobs([red_threshold], roi = line_roi1,pixels_threshold = 20)
+    blobs_low = img.find_blobs([red_threshold], roi = line_roi1)
+    red_pixel_count = 0
+    for blob in blobs_low:
+        red_pixel_count += blob.pixels()
+        #print(red_pixel_count)
+
+    if(blobs_low):  # 前方有线
+        #if(blobs_low[0].h()*blobs_low[0].w()>=31000): # 十字路口
+        if(red_pixel_count > 4500):
+            flag = 1
+            xx1 = 80
+            xx2 = 0
+            print("across")
+        else:   # 正常巡线
+            img.draw_cross(blobs_low[0].cx(), blobs_low[0].cy(), (0,255,0), 5)
+            #img.draw_cross(blobs_high[0].cx(), blobs_high[0].cy(), (255,255,255), 5)
+            #print("line")
+            flag = 0
+            xx1 = blobs_low[0].cx() # 检测到的第一个红色色块（即 blobs_low 列表中第一个元素）的中心 x 坐标。
+            if xx1 > 200:
+                xx2 = 2  # 右偏
+            elif xx1 < 120:
+                xx2 = 1
+            else:
+                xx2 = 0
+
+    else:   # 前方无线
+        flag = 4
+        xx1 = 80
+        xx2 = 0
+        #print("end")
+
+def cros(place):
+    global cros_flag
+    if place == "place1":
+        p_num = 1
+    elif place == "place2":
+        p_num = 2
+    elif place == "place3":
+        p_num = 3
+    elif place == "home":
+        p_num = 4
+    else:
+        p_num = 10
+
+    left = 0
+    right = 0
+    straight = 0
+    arri = 0
+
+    # 在指定区域内寻找蓝色像素
+    blue_blobs = img.find_blobs([blue_threshold], roi=roi_left)
+
+    blue_pixel_count = 0
+    for blob in blue_blobs:
+        blue_pixel_count += blob.pixels()  # 计算蓝色像素数量
+        print(blue_pixel_count)
+
+    # 判断蓝色像素数量
+    # 判断是否到达目标或继续
+    # 0: "goon", 1: "arri", 2: "left", 3: "right", 4: "none"
+    if blue_pixel_count > 12000:
+        left = 0
+        right = 0
+        straight = 0
+        arri = 4
+        print(8)
+    elif 5700 < blue_pixel_count < 12000:
+        left = 4
+        right = 3
+        straight = 1
+        arri = 0
+        print(7)
+    elif 100 < blue_pixel_count < 220:
+        left = 2
+        right = 1
+        straight = 4
+        arri = 0
+        print(6)
+    elif 20 < blue_pixel_count < 100:
+        left = 3
+        right = 4
+        straight = 2
+        arri = 0
+        print(5)
+    elif 3000 < blue_pixel_count < 5700:
+        left = 1
+        right = 2
+        straight = 3
+        arri = 0
+        print(4)
+    elif 1300 < blue_pixel_count < 3000:
+        left = 0
+        right = 0
+        straight = 0
+        arri = 3
+        print(3)
+    elif 500 < blue_pixel_count < 1300:
+        left = 0
+        right = 0
+        straight = 0
+        arri = 2
+        print(2)
+    elif 220 < blue_pixel_count < 500:
+        left = 0
+        right = 0
+        straight = 0
+        arri = 1
+        print(1)
+    else:
+        left = 0
+        right = 0
+        straight = 0
+        arri = 0
+        print(9)
+
+    #print(right)
+
+    if p_num == straight:
+        cros_flag = 0
+    elif p_num == arri:
+        cros_flag = 1
+    elif p_num == left:
+        cros_flag = 2
+    elif p_num == right:
+        cros_flag = 3
+    else:
+        cros_flag = 4
+
+
+def line_check(flag, xx2):
+    if flag == 0:
+        if xx2 == 0:
+            return "lin0"
+        elif xx2 == 1:
+            return "lin1"
+        elif xx2 == 2:
+            return "lin2"   #中心在右偏，需要向右走
+    elif flag == 1:
+        return "cros"
+    elif flag == 4:
+        return "stop"
+    return "stop"
+
+def cros_check(cros_flag):
+    if cros_flag == 0:
+        return "goon"
+    elif cros_flag == 1:
+        return "arri"
+    elif cros_flag == 2:
+        return "left"
+    elif cros_flag == 3:
+        return "right"
+    else:
+        return "none"
+
+# 初始化 I2C，作为从机，地址为 0x08
+i2c = pyb.I2C(2, pyb.I2C.SLAVE, addr=0x08)
+
+# 缓冲区用于存储接收到的数据
+data = bytearray(4)  # "play" 长度为 4
+
+
+while True:
+    img = sensor.snapshot()
+    run()
+    #img_black=img.binary([red_threshold])   # 图像二值化,使图像只有黑白,白色为被追踪的颜色,注意:
+                                            # 要放在色块识别的后面,不然色块识别会出问题
+    #img.draw_rectangle(line_roi1, color=(255,0,0))
+
+    try:
+        # 检查是否有数据接收
+        if i2c.recv(data, timeout=1000):
+            received_str = data.decode('utf-8').strip()
+            # print("Received:", received_str)
+            green_led.on()  # 打开绿色 LED，表示收到并响应成功
+            if received_str == "star" or "work":
+                # line stop cros
+                response = line_check(flag, xx2)
+                print(response)
+                i2c.send(response, timeout=1000)  # 发送响应
+                green_led.off()
+
+                # cros 判定
+                if response == "cros":
+                    blue_led.on()
+                    if i2c.recv(data, timeout=1000):
+                        received_cros = data.decode('utf-8').strip()
+                        if received_cros == "croA":
+                            place = "place1"
+                        elif received_cros == "croB":
+                            place = "place2"
+                        elif received_cros == "croC":
+                            place = "place3"
+                        elif received_cros == "home":
+                            place = "home"
+                        else:
+                            place = "none"
+
+                        cros(place)
+                        # cros_flag 0: "goon", 1: "arri", 2: "left", 3: "right", 4: "none"
+                        print(cros_flag)
+                        response_cros = cros_check(cros_flag)
+
+
+                        print(response_cros)
+                        i2c.send(response_cros, timeout=3000)  # 发送响应
+
+            else:
+                bule_led.on()  # 打开蓝色 LED，表示收到无效的命令
+                print("Invalid command received")
+        else:
+            red_led.on()  # 打开红色 LED，表示接收超时
+            print("Receive timeout")
+    except OSError as e:
+        print("11Error:", e)
+        red_led.on()  # 打开红色 LED，表示发生错误
+    finally:
+        time.sleep(0.05)
+        green_led.off()  # 确保在每次循环结束后关闭绿色 LED
+        red_led.off()    # 确保在每次循环结束后关闭红色 LED
+        blue_led.off()
