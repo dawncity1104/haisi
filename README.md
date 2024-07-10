@@ -1,0 +1,2 @@
+main里是全部代码。关于hi3861的部分代码在master内。hi3861__src__device__hisilicon__hispark_pegasus__sdk_liteos__third_party代表：third_party是在hi3861//src//device//hisilicon
+//hispark_pegasus//sdk_liteos 目录下的
